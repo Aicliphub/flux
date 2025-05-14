@@ -12,6 +12,9 @@ from contextlib import asynccontextmanager
 
 app = FastAPI()
 
+# Render.com requires binding to 0.0.0.0 and using PORT env var
+PORT = int(os.environ.get("PORT", 8000))
+
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
@@ -148,3 +151,7 @@ async def generate_endpoint(
             status_code=500,
             detail=f"Internal server error: {str(e)}"
         )
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=PORT)
