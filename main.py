@@ -38,24 +38,32 @@ async def lifespan(app: FastAPI):
 app.router.lifespan_context = lifespan
 
 async def generate_image(prompt: str):
-    headers = {
-        'accept': 'application/json',
-        'authorization': f'Bearer {os.environ["FLUX_API_KEY"]}',
-    }
-
-    files = {
-        'prompt': (None, prompt),
-        'model': (None, 'flux_1_schnell'),
-        'size': (None, '16_9'),
-        'lora': (None, ''),
-        'style': (None, 'no_style'),
-    }
-
     try:
+        # Verify FLUX_API_KEY is set
+        if "FLUX_API_KEY" not in os.environ:
+            raise HTTPException(
+                status_code=500,
+                detail="FLUX_API_KEY environment variable not set"
+            )
+
+        headers = {
+            'accept': 'application/json',
+            'authorization': f'Bearer {os.environ["FLUX_API_KEY"]}',
+        }
+
+        files = {
+            'prompt': (None, prompt),
+            'model': (None, 'flux_1_schnell'),
+            'size': (None, '16_9'),
+            'lora': (None, ''),
+            'style': (None, 'no_style'),
+        }
+
         response = await http_client.post(
             'https://api.freeflux.ai/v1/images/generate',
             headers=headers,
-            files=files
+            files=files,
+            timeout=30.0
         )
         response.raise_for_status()
 
@@ -72,16 +80,30 @@ async def generate_image(prompt: str):
     except httpx.HTTPStatusError as e:
         raise HTTPException(
             status_code=e.response.status_code,
-            detail="Image generation failed"
+            detail=f"Image generation failed: {str(e)}"
         )
     except json.JSONDecodeError:
         raise HTTPException(
             status_code=500,
             detail="Invalid API response format"
         )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Image generation error: {str(e)}"
+        )
 
 async def upload_to_r2(image_data: str) -> str:
     try:
+        # Verify required R2 environment variables are set
+        required_vars = ['R2_BUCKET_NAME', 'R2_PUBLIC_DOMAIN']
+        for var in required_vars:
+            if var not in os.environ:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"{var} environment variable not set"
+                )
+
         image_bytes = base64.b64decode(image_data)
         timestamp = int(time.time())
         object_name = f"generated_image_{timestamp}.png"
